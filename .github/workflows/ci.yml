@@ -106,10 +106,10 @@ jobs:
         run: |
           docker buildx imagetools inspect ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
           docker pull ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
-          cosign verify --key env://COSIGN_PUB_KEY ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }} 
+          cosign verify --key env://COSIGN_KEY ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }} 
       - uses: anchore/sbom-action@v0
         with:
           image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
         env:
-          COSIGN_PUB_KEY: ${{secrets.COSIGN_PUBLIC_KEY}}
+          COSIGN_KEY: ${{secrets.COSIGN_PUBLIC_KEY}}
 
