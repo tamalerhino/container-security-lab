@@ -16,13 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       security-events: write
-    
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-        - language: javascript-typescript
-          build-mode: none
           
     steps:
       - name: Checkout Code
@@ -30,14 +23,13 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
+          languages: javascript-typescript
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:${{matrix.language}}"
+          category: "/language:javascript-typescript"
 
   build-push:
     name: Build and Push Container Image
@@ -55,7 +47,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-
       - name: Build and Publish Container Image
         uses: docker/build-push-action@v3
         with:
@@ -74,7 +65,7 @@ jobs:
 
     steps:
       - name: Install Trivy
-        uses: aquasecurity/trivy-action@0.20.0
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: '${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}'
           format: 'table'
@@ -125,6 +116,7 @@ jobs:
       - uses: anchore/sbom-action@v0
         with:
           image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          format: cyclonedx
+          upload-artifact-retention: 30
         env:
           COSIGN_KEY: ${{secrets.COSIGN_PUBLIC_KEY}}
-
