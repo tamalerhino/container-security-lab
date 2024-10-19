@@ -83,7 +83,7 @@ jobs:
         uses: sigstore/cosign-installer@main
       - name: Sign Container Image
         run: |
-            cosign sign --key env://COSIGN_KEY ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }} --yes
+            cosign sign --yes --key env://COSIGN_KEY ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
         shell: bash
         env:
           COSIGN_KEY: ${{secrets.COSIGN_PRIVATE_KEY}}
