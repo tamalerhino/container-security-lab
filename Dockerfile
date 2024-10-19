@@ -1,5 +1,5 @@
 # Step 1: Use a base Node.js image
-FROM node:14
+FROM node:latest
 
 # Step 2: Create and set the working directory
 WORKDIR /usr/src/app
