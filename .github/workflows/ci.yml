@@ -100,6 +100,8 @@ jobs:
     needs: sign
 
     steps:
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.7.0
       - name: Check images
         run: |
           docker buildx imagetools inspect ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
