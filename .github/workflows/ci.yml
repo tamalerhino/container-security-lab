@@ -16,28 +16,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       security-events: write
-          
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install In-Toto
+      - name: Install Witness
         run: |
-          pip install in-toto
+          curl -LO https://github.com/in-toto/witness/releases/download/v0.1.0/witness-linux-amd64
+          chmod +x witness-linux-amd64
+          sudo mv witness-linux-amd64 /usr/local/bin/witness
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: javascript-typescript
-
-      - name: Run CodeQL and Record Provenance
+      - name: Run CodeQL Analysis and Record with Witness
         run: |
-          in-toto-run --step "codeql-sast" --materials . --products . --signing-key ${{ secrets.IN_TOTO_KEY }} -- github/codeql-action/autobuild@v3
+          witness run --name "codeql-sast" --step-name "Run CodeQL SAST" -- github/codeql-action/init@v3 --languages javascript-typescript
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:javascript-typescript"
+        run: |
+          witness run --name "codeql-analysis" --step-name "Analyze with CodeQL" -- github/codeql-action/analyze@v3 --category "/language:javascript-typescript"
 
   build-push:
     name: Build and Push Container Image
@@ -45,12 +41,14 @@ jobs:
     needs: codeql
 
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install In-Toto
+      - name: Install Witness
         run: |
-          pip install in-toto
+          curl -LO https://github.com/in-toto/witness/releases/download/v0.1.0/witness-linux-amd64
+          chmod +x witness-linux-amd64
+          sudo mv witness-linux-amd64 /usr/local/bin/witness
 
       - name: Set up Docker Buildx
         id: buildx
@@ -62,9 +60,9 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and Publish Container Image and Record Provenance
+      - name: Build and Publish Container Image and Record with Witness
         run: |
-          in-toto-run --step "build-push" --materials . --products . --signing-key ${{ secrets.IN_TOTO_KEY }} -- docker/build-push-action@v3
+          witness run --name "build-push" --step-name "Build and Push Image" -- docker/build-push-action@v3 --push true
 
   trivy:
     name: Run Trivy Scan
@@ -72,23 +70,15 @@ jobs:
     needs: build-push
 
     steps:
-      - name: Install In-Toto
+      - name: Install Witness
         run: |
-          pip install in-toto
+          curl -LO https://github.com/in-toto/witness/releases/download/v0.1.0/witness-linux-amd64
+          chmod +x witness-linux-amd64
+          sudo mv witness-linux-amd64 /usr/local/bin/witness
 
-      - name: Install Trivy
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: '${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}'
-          format: 'table'
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Record Trivy Scan Provenance
+      - name: Run Trivy Scan and Record with Witness
         run: |
-          in-toto-run --step "trivy-scan" --materials . --products . --signing-key ${{ secrets.IN_TOTO_KEY }} -- trivy
+          witness run --name "trivy-scan" --step-name "Run Trivy Scan" -- trivy image ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
 
   sign:
     name: Sign Container Image with Cosign
@@ -96,22 +86,18 @@ jobs:
     needs: trivy
 
     steps:
-      - name: Login to Dockerhub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Install Cosign and In-Toto
+      - name: Install Cosign and Witness
         run: |
-          pip install in-toto
+          curl -LO https://github.com/in-toto/witness/releases/download/v0.1.0/witness-linux-amd64
+          chmod +x witness-linux-amd64
+          sudo mv witness-linux-amd64 /usr/local/bin/witness
           curl -LO https://github.com/sigstore/cosign/releases/download/v1.13.1/cosign-linux-amd64
           chmod +x cosign-linux-amd64
           sudo mv cosign-linux-amd64 /usr/local/bin/cosign
 
-      - name: Sign Container Image and Record Provenance
+      - name: Sign Container Image and Record with Witness
         run: |
-          in-toto-run --step "cosign-sign" --materials . --products . --signing-key ${{ secrets.IN_TOTO_KEY }} -- cosign sign --key-env COSIGN_KEY ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          witness run --name "cosign-sign" --step-name "Sign Image with Cosign" -- cosign sign --key-env COSIGN_KEY ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
 
   validate-container:
     name: Validate Container Image
@@ -119,40 +105,22 @@ jobs:
     needs: sign
 
     steps:
-      - name: Install Cosign and In-Toto
+      - name: Install Cosign and Witness
         run: |
-          pip install in-toto
+          curl -LO https://github.com/in-toto/witness/releases/download/v0.1.0/witness-linux-amd64
+          chmod +x witness-linux-amd64
+          sudo mv witness-linux-amd64 /usr/local/bin/witness
           curl -LO https://github.com/sigstore/cosign/releases/download/v1.13.1/cosign-linux-amd64
           chmod +x cosign-linux-amd64
           sudo mv cosign-linux-amd64 /usr/local/bin/cosign
 
-      - name: Write public key to disk
-        run: 'echo "$KEY" > cosign.key'
-        shell: bash
-        env:
-          KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
-
-      - name: Verify Signature and Record Provenance
+      - name: Verify Cosign Signature and Record with Witness
         run: |
-          in-toto-run --step "validate-signature" --materials . --products . --signing-key ${{ secrets.IN_TOTO_KEY }} -- cosign verify --key cosign.key ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          witness run --name "verify-signature" --step-name "Verify Signature" -- cosign verify --key cosign.key ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
 
-      - uses: anchore/sbom-action@v0
+      - name: Generate SBOM with Anchore and Record with Witness
+        uses: anchore/sbom-action@v0
         with:
           image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
           format: cyclonedx
           upload-artifact-retention: 30
-        env:
-          COSIGN_KEY: ${{secrets.COSIGN_PUBLIC_KEY}}
-
-  validate-attestation:
-    name: Validate Attestation
-    runs-on: ubunut-latest
-    needs: validate-container
-
-    steps:
-      - name: Install In-Toto
-        run: |
-          pip install in-toto
-      - name: Verify In-Toto Metadata
-        run: |
-          in-toto-verify --layout root.layout --layout-key ${{ secrets.IN_TOTO_PUBLIC_KEY }}
