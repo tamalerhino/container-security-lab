@@ -32,7 +32,7 @@ jobs:
 
       - name: Run CodeQL and Record Provenance
         run: |
-          in-toto-run --step "codeql-sast" --materials . --products . --key ${{ secrets.IN_TOTO_KEY }} -- github/codeql-action/autobuild@v3
+          in-toto-run --step "codeql-sast" --materials . --products . --signing-key ${{ secrets.IN_TOTO_KEY }} -- github/codeql-action/autobuild@v3
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
@@ -64,7 +64,7 @@ jobs:
 
       - name: Build and Publish Container Image and Record Provenance
         run: |
-          in-toto-run --step "build-push" --materials . --products . --key ${{ secrets.IN_TOTO_KEY }} -- docker/build-push-action@v3
+          in-toto-run --step "build-push" --materials . --products . --signing-key ${{ secrets.IN_TOTO_KEY }} -- docker/build-push-action@v3
 
   trivy:
     name: Run Trivy Scan
@@ -88,7 +88,7 @@ jobs:
 
       - name: Record Trivy Scan Provenance
         run: |
-          in-toto-run --step "trivy-scan" --materials . --products . --key ${{ secrets.IN_TOTO_KEY }} -- trivy
+          in-toto-run --step "trivy-scan" --materials . --products . --signing-key ${{ secrets.IN_TOTO_KEY }} -- trivy
 
   sign:
     name: Sign Container Image with Cosign
@@ -111,7 +111,7 @@ jobs:
 
       - name: Sign Container Image and Record Provenance
         run: |
-          in-toto-run --step "cosign-sign" --materials . --products . --key ${{ secrets.IN_TOTO_KEY }} -- cosign sign --key-env COSIGN_KEY ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          in-toto-run --step "cosign-sign" --materials . --products . --signing-key ${{ secrets.IN_TOTO_KEY }} -- cosign sign --key-env COSIGN_KEY ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
 
   validate-container:
     name: Validate Container Image
@@ -134,7 +134,7 @@ jobs:
 
       - name: Verify Signature and Record Provenance
         run: |
-          in-toto-run --step "validate-signature" --materials . --products . --key ${{ secrets.IN_TOTO_KEY }} -- cosign verify --key cosign.key ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          in-toto-run --step "validate-signature" --materials . --products . --signing-key ${{ secrets.IN_TOTO_KEY }} -- cosign verify --key cosign.key ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
 
       - uses: anchore/sbom-action@v0
         with:
