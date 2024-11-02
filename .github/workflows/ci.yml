@@ -23,9 +23,7 @@ jobs:
 
       - name: Install Witness
         run: |
-          curl -LO https://github.com/in-toto/witness/releases/download/v0.1.0/witness-linux-amd64
-          chmod +x witness-linux-amd64
-          sudo mv witness-linux-amd64 /usr/local/bin/witness
+          bash <(curl -s https://raw.githubusercontent.com/in-toto/witness/main/install-witness.sh)
 
       - name: Run CodeQL Analysis and Record with Witness
         run: |
@@ -46,10 +44,8 @@ jobs:
 
       - name: Install Witness
         run: |
-          curl -LO https://github.com/in-toto/witness/releases/download/v0.1.0/witness-linux-amd64
-          chmod +x witness-linux-amd64
-          sudo mv witness-linux-amd64 /usr/local/bin/witness
-
+          bash <(curl -s https://raw.githubusercontent.com/in-toto/witness/main/install-witness.sh)
+          
       - name: Set up Docker Buildx
         id: buildx
         uses: docker/setup-buildx-action@v3
@@ -72,9 +68,7 @@ jobs:
     steps:
       - name: Install Witness
         run: |
-          curl -LO https://github.com/in-toto/witness/releases/download/v0.1.0/witness-linux-amd64
-          chmod +x witness-linux-amd64
-          sudo mv witness-linux-amd64 /usr/local/bin/witness
+          bash <(curl -s https://raw.githubusercontent.com/in-toto/witness/main/install-witness.sh)
 
       - name: Run Trivy Scan and Record with Witness
         run: |
@@ -86,15 +80,13 @@ jobs:
     needs: trivy
 
     steps:
-      - name: Install Cosign and Witness
+      - name: Install Witness
         run: |
-          curl -LO https://github.com/in-toto/witness/releases/download/v0.1.0/witness-linux-amd64
-          chmod +x witness-linux-amd64
-          sudo mv witness-linux-amd64 /usr/local/bin/witness
-          curl -LO https://github.com/sigstore/cosign/releases/download/v1.13.1/cosign-linux-amd64
-          chmod +x cosign-linux-amd64
-          sudo mv cosign-linux-amd64 /usr/local/bin/cosign
-
+          bash <(curl -s https://raw.githubusercontent.com/in-toto/witness/main/install-witness.sh)
+          
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.7.0
+        
       - name: Sign Container Image and Record with Witness
         run: |
           witness run --name "cosign-sign" --step-name "Sign Image with Cosign" -- cosign sign --key-env COSIGN_KEY ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
@@ -105,14 +97,12 @@ jobs:
     needs: sign
 
     steps:
-      - name: Install Cosign and Witness
+      - name: Install Witness
         run: |
-          curl -LO https://github.com/in-toto/witness/releases/download/v0.1.0/witness-linux-amd64
-          chmod +x witness-linux-amd64
-          sudo mv witness-linux-amd64 /usr/local/bin/witness
-          curl -LO https://github.com/sigstore/cosign/releases/download/v1.13.1/cosign-linux-amd64
-          chmod +x cosign-linux-amd64
-          sudo mv cosign-linux-amd64 /usr/local/bin/cosign
+          bash <(curl -s https://raw.githubusercontent.com/in-toto/witness/main/install-witness.sh)
+          
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.7.0
 
       - name: Verify Cosign Signature and Record with Witness
         run: |
