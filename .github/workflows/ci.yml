@@ -3,7 +3,7 @@ name: Container Security Lab
 on:
   push:
     branches:
-      - main
+      - '*'
   pull_request:
 
 env:
