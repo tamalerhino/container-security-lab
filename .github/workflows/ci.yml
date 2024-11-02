@@ -16,80 +16,90 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       security-events: write
-
+          
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Install Witness
-        run: |
-          bash <(curl -s https://raw.githubusercontent.com/in-toto/witness/main/install-witness.sh)
-
-      - name: Run CodeQL Analysis and Record with Witness
-        run: |
-          witness run --name "codeql-sast" --step-name "Run CodeQL SAST" -- github/codeql-action/init@v3 --languages javascript-typescript
-
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
       - name: Perform CodeQL Analysis
-        run: |
-          witness run --name "codeql-analysis" --step-name "Analyze with CodeQL" -- github/codeql-action/analyze@v3 --category "/language:javascript-typescript"
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
 
-  build-push:
-    name: Build and Push Container Image
+  build-scan-push:
+    name: Build, scan the container with Trivy, and Push Container Image
     runs-on: ubuntu-latest
     needs: codeql
 
     steps:
-      - name: Checkout Code
+    #setup tools needed.
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install Witness
-        run: |
-          bash <(curl -s https://raw.githubusercontent.com/in-toto/witness/main/install-witness.sh)
-          
       - name: Set up Docker Buildx
         id: buildx
         uses: docker/setup-buildx-action@v3
-
       - name: Login to Dockerhub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+    #Builds the image 
+      - name: Build Container Image
+        uses: docker/build-push-action@v3
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+    #Scans Image for Vulnerabilites        
+      - name: Install Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: '${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+    #Push image to Dockerhub if passes vuln scan      
+      - name: Build and Publish Container Image
+        uses: docker/build-push-action@v3
+        with:
+        #sbom:true #This docker action will allow it to generate an SBOM at this step
+          provenance: mode=max #This steps allow us to create some attestation with how the image was built
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
 
-      - name: Build and Publish Container Image and Record with Witness
-        run: |
-          witness run --name "build-push" --step-name "Build and Push Image" -- docker/build-push-action@v3 --push true
-
-  trivy:
-    name: Run Trivy Scan
-    runs-on: ubuntu-latest
-    needs: build-push
-
-    steps:
-      - name: Install Witness
-        run: |
-          bash <(curl -s https://raw.githubusercontent.com/in-toto/witness/main/install-witness.sh)
-
-      - name: Run Trivy Scan and Record with Witness
-        run: |
-          witness run --name "trivy-scan" --step-name "Run Trivy Scan" -- trivy image ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
 
   sign:
     name: Sign Container Image with Cosign
     runs-on: ubuntu-latest
-    needs: trivy
+    needs: build-scan-push
 
     steps:
-      - name: Install Witness
-        run: |
-          bash <(curl -s https://raw.githubusercontent.com/in-toto/witness/main/install-witness.sh)
-          
+      - name: Login to Dockerhub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3.7.0
-        
-      - name: Sign Container Image and Record with Witness
+      - name: Sign Container Image
         run: |
-          witness run --name "cosign-sign" --step-name "Sign Image with Cosign" -- cosign sign --key-env COSIGN_KEY ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+            cosign sign --yes --key env://COSIGN_KEY ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+        shell: bash
+        env:
+          COSIGN_KEY: ${{secrets.COSIGN_PRIVATE_KEY}}
+          COSIGN_PASSWORD: ${{secrets.COSIGN_PASSWORD}}
 
   validate-container:
     name: Validate Container Image
@@ -97,20 +107,22 @@ jobs:
     needs: sign
 
     steps:
-      - name: Install Witness
-        run: |
-          bash <(curl -s https://raw.githubusercontent.com/in-toto/witness/main/install-witness.sh)
-          
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3.7.0
-
-      - name: Verify Cosign Signature and Record with Witness
+      - name: Write public key to disk
+        run: 'echo "$KEY" > cosign.key'
+        shell: bash
+        env:
+          KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
+      - name: Check images
         run: |
-          witness run --name "verify-signature" --step-name "Verify Signature" -- cosign verify --key cosign.key ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
-
-      - name: Generate SBOM with Anchore and Record with Witness
-        uses: anchore/sbom-action@v0
+          docker buildx imagetools inspect ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          docker pull ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          cosign verify --key cosign.key ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }} 
+      - uses: anchore/sbom-action@v0
         with:
           image: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
           format: cyclonedx
           upload-artifact-retention: 30
+        env:
+          COSIGN_KEY: ${{secrets.COSIGN_PUBLIC_KEY}}
